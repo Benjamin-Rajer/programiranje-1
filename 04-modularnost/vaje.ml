@@ -17,12 +17,17 @@
 
 module type NAT = sig
   type t
-
   val eq  : t -> t -> bool
   val zero : t
   (* Dodajte manjkajoče! *)
   (* val to_int : t -> int *)
   (* val of_int : int -> t *)
+  val one : t
+  val ( ++ ) : t -> t -> t (* lahko bi dal tudi samo ( + )*)
+  val ( -- ) : t -> t -> t
+  val ( ** ) : t -> t -> t
+  val to_int : t -> int
+  val of_int : int -> t
 end
 
 (*----------------------------------------------------------------------------*
@@ -35,11 +40,17 @@ end
 
 module Nat_int : NAT = struct
 
-  type t = int
-  let eq x y = failwith "later"
+  type t = int (* t postane okrajšava za int *)
+  let eq x y = x = y
   let zero = 0
   (* Dodajte manjkajoče! *)
+  let one = 1
 
+  let ( ++ ) a b = a + b
+  let ( -- ) a b = if b > a then zero else a - b
+  let ( ** ) = ( * ) (* tudi to deluje *)
+  let to_int a = a
+  let of_int b = b
 end
 
 (*----------------------------------------------------------------------------*
@@ -51,12 +62,75 @@ end
  rekurzijo na `k` in `l`, kjer je osnoven primer `Zero = Zero`.
 [*----------------------------------------------------------------------------*)
 
-module Nat_peano : NAT = struct
+module Nat_peano: NAT = struct
 
-  type t = unit (* To morate spremeniti! *)
-  let eq x y = failwith "later"
-  let zero = () (* To morate spremeniti! *)
+  type t =
+  | Zero
+  | Succ of t 
+
+  let eq x y = 
+    let rec eq_aux x y =
+      match x with
+      | Zero ->
+        begin
+          match y with
+          | Zero -> true
+          | Succ _ -> false
+        end
+      | Succ xs -> 
+        match y with
+        | Zero -> false
+        | Succ ys -> eq_aux xs ys
+      in
+    eq_aux x y
+
+(*boljše: *)
+let rec eq a b = 
+  match (a, b) with
+  | (Zero, Zero) -> true
+  | (Succ xs, Succ ys) -> eq xs ys
+  | _ -> false
+  let zero = Zero
   (* Dodajte manjkajoče! *)
+  let one = Succ (Zero)
+
+  let ( ++ ) a b = 
+    let rec sum_aux x y =
+      match x with
+      | Zero -> y
+      | Succ xs -> sum_aux xs (Succ y)
+    in
+    sum_aux a b
+
+
+  let rec ( -- ) a b = 
+    match (a, b) with
+    | (Zero, Zero) -> Zero
+    | (Zero, Succ _) -> Zero
+    | (a, Zero) -> a
+    | (Succ xs, Succ ys) -> xs -- ys (*lahko bi tudi kaj združili kake pogoje*)
+
+
+  let rec ( ** ) a b =
+  match (a, b) with
+  | (a, Succ bs) -> a ++ (a ** bs)
+  | (_, Zero) -> Zero 
+(*glej wikipedijo za rekurzivno zvezo*)
+
+  let to_int a = 
+    let rec aux acc x =
+      match x with
+      | Zero -> acc
+      | Succ xs -> aux (acc + 1) xs
+    in
+    aux 0 a
+
+  let of_int b = 
+    let rec aux acc y =
+      if b <= 0 then acc
+      else aux (Succ acc) (y - 1)
+    in
+    aux Zero b
 
 end
 
@@ -80,13 +154,20 @@ module type CALC = sig
   val factorial : t -> t
   val sum_100 : t
 end
-
+(* torej mi uporabimo modul tipa NAT da skonstruiramo modul tipa CALC,
+dostop imamo samo do operacij v signaturi NAT.
+Definicije, ki smo si jih napisali v naravnem jeziku moramo prepisati v jezik tipa NAT
+Moramo se omejiti na to, da delamo s tipom N*)
 module Nat_calculations (N: NAT) : CALC with type t := N.t = struct
-  let factorial _ = (* To morate spremeniti! *)
-    N.zero
+  let rec factorial a =
+    if (N.eq a N.zero) then N.one else N.( ** ) a (factorial (N.( -- ) a N.one))
 
-  let sum_100 = (* To morate spremeniti! *)
-    N.zero
+  let sum_100 = (*vprašamo se, kako to naredimo z navadnim int*)
+    let rec sum_aux a =
+      if N.eq a N.zero then N.zero else
+      N.( ++ ) a (sum_aux (N.( -- ) a N.one))
+    in
+    sum_aux (N.of_int 100)
 end
 
 (*----------------------------------------------------------------------------*
@@ -98,7 +179,16 @@ end
 [*----------------------------------------------------------------------------*)
 
 module Nat_int_calc = Nat_calculations (Nat_int)
+(*na voljo imamo funkcije iz Nat_int (tip v funkcijah je potem Nat_int.t) in iz signature CALC
+za CALC smo pa definirali da je tip t enak Nat_int.t*)
 module Nat_peano_calc = Nat_calculations (Nat_peano)
+
+
+let sum_100_int = Nat_int.to_int Nat_int_calc.sum_100
+let sum_100_peano = Nat_peano.to_int Nat_peano_calc.sum_100
+
+let fact_5_int = Nat_int.to_int (Nat_int_calc.factorial (Nat_int.of_int 5))
+let fact_5_peano = Nat_peano.to_int (Nat_peano_calc.factorial (Nat_peano.of_int 5))
 
 
 (* val sum_100_int : int = 5050 *)
